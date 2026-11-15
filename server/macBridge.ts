@@ -21,6 +21,7 @@ import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { cleanupOnExit, createLmsSession } from './lmsSession.ts'
 
 const LMS_CANDIDATES = [
   process.env.LMS_PATH,
@@ -210,14 +211,74 @@ function send(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body))
 }
 
+/**
+ * Tracks open browser windows. Each window holds one long-lived connection
+ * (/local/alive); when the window closes, the connection drops right away,
+ * even if the browser never sends an "unload" event.
+ */
+function createTabTracker(onAllClosed: () => void) {
+  const CLOSE_GRACE = 5_000 // long enough to survive a page reload
+  let open = 0
+  let everConnected = false
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  return {
+    attach(req: IncomingMessage, res: ServerResponse) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+      res.write(': connected\n\n')
+      const ping = setInterval(() => res.write(': ping\n\n'), 25_000)
+      open++
+      everConnected = true
+      if (timer) clearTimeout(timer)
+      timer = null
+      req.on('close', () => {
+        clearInterval(ping)
+        open--
+        if (everConnected && open === 0) {
+          timer = setTimeout(() => open === 0 && onAllClosed(), CLOSE_GRACE)
+        }
+      })
+    },
+  }
+}
+
 export function macBridge(opts: { llmServer?: string } = {}): Plugin {
+  let ready: Promise<void> = Promise.resolve()
+  let autoShutdown = false
+  let tracker: ReturnType<typeof createTabTracker> | null = null
+
+  // Runs only when a server starts (not during `vite build`).
+  function startSession(mode: 'dev' | 'preview') {
+    if (lmsPath && !opts.llmServer && process.env.OFFLINE_LLM_MANAGE_LMSTUDIO !== '0') {
+      const session = createLmsSession(lmsPath)
+      ready = session.ready.then(() => void llmTarget(undefined, true).catch(() => {}))
+      cleanupOnExit(session.cleanup)
+    }
+    // `npm start` (preview) quits when the last browser window closes.
+    // `npm run dev` keeps running for development; stop it with Ctrl+C.
+    autoShutdown = mode === 'preview' && process.env.OFFLINE_LLM_AUTO_EXIT !== '0'
+    if (autoShutdown) {
+      tracker = createTabTracker(() => {
+        console.log('\x1b[2m[offline-llm]\x1b[0m Browser window closed. Shutting down…')
+        process.exit(0) // triggers the LM Studio cleanup
+      })
+    }
+  }
+
   const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const url = req.url ?? ''
     if (url.startsWith('/llm/')) {
+      await ready
       return proxy(req, res, await llmTarget(opts.llmServer), url.slice(4))
     }
     if (!url.startsWith('/local/')) return next()
     const route = url.split('?')[0]
+    // Presence connection from each open window (see createTabTracker).
+    if (req.method === 'GET' && route === '/local/alive') {
+      if (tracker) return tracker.attach(req, res)
+      res.statusCode = 204 // dev mode: no auto-exit; 204 tells EventSource not to retry
+      return res.end()
+    }
     // Only the app itself may call the bridge: a custom header forces a CORS
     // preflight, so other websites open in your browser can't trigger loads.
     if (req.method !== 'GET' && req.headers['x-offline-llm'] !== '1') {
@@ -225,7 +286,10 @@ export function macBridge(opts: { llmServer?: string } = {}): Plugin {
     }
     try {
       if (req.method === 'GET' && route === '/local/system') return send(res, 200, await systemInfo())
-      if (req.method === 'GET' && route === '/local/models') return send(res, 200, await listModels())
+      if (req.method === 'GET' && route === '/local/models') {
+        await ready
+        return send(res, 200, await listModels())
+      }
 
       if (req.method === 'POST' && route === '/local/estimate') {
         const body = await readJson(req)
@@ -266,9 +330,11 @@ export function macBridge(opts: { llmServer?: string } = {}): Plugin {
   return {
     name: 'mac-bridge',
     configureServer(server) {
+      startSession('dev')
       server.middlewares.use(handler)
     },
     configurePreviewServer(server) {
+      startSession('preview')
       server.middlewares.use(handler)
     },
   }

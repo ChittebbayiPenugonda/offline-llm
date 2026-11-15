@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getLocalModels, getServerModels, getSystem, loadModel, startServer, streamChat } from './api'
+import { getLocalModels, getServerModels, getSystem, keepAlive, loadModel, startServer, streamChat } from './api'
 import { HardwarePanel, fitLabel } from './components/HardwarePanel'
 import { MessageView } from './components/MessageView'
 import {
@@ -91,6 +91,7 @@ export default function App() {
   useEffect(() => {
     refresh()
   }, [refresh])
+  useEffect(() => keepAlive(), [])
 
   const modelOptions = useMemo(() => {
     if (localModels.length) return localModels.map((m) => ({ key: m.key, model: m as LocalModel | null }))

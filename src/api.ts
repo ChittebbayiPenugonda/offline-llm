@@ -29,6 +29,16 @@ export const loadModel = (modelKey: string, contextLength: number) =>
 export const unloadAll = () =>
   fetch('/local/unload', { method: 'POST', headers: BRIDGE_HEADERS }).then((r) => json(r))
 
+/**
+ * Holds a connection open while this window is open. With `npm start`, the
+ * server shuts down (and restores LM Studio) a few seconds after the last
+ * window closes. EventSource reconnects by itself after sleep or a hiccup.
+ */
+export function keepAlive(): () => void {
+  const es = new EventSource('/local/alive')
+  return () => es.close()
+}
+
 export const startServer = () =>
   fetch('/local/server/start', { method: 'POST', headers: BRIDGE_HEADERS }).then((r) => json(r))
 
@@ -144,7 +154,8 @@ export async function streamChat(opts: {
 
   const end = performance.now()
   const { content, reasoning } = split()
-  const genSecs = Math.max((end - (firstTokenAt || start)) / 1000, 0.001)
+  // Rate over the streaming phase; the first token's time is counted in TTFT.
+  const genSecs = Math.max((end - (firstTokenAt || start)) / 1000, 0.05)
   const approx = usageTokens == null
   const tokens = usageTokens ?? Math.round((content.length + reasoning.length) / 4)
   return {
@@ -152,7 +163,7 @@ export async function streamChat(opts: {
     reasoning,
     stats: {
       tokens,
-      tokensPerSec: serverTps ?? tokens / genSecs,
+      tokensPerSec: serverTps ?? (tokens > 1 ? (tokens - 1) / genSecs : 0),
       ttftMs: firstTokenAt ? firstTokenAt - start : end - start,
       approx,
     },

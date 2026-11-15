@@ -27,7 +27,21 @@ npm install          # one time, needs internet
 npm start            # builds and opens http://localhost:5173
 ```
 
-Or double-click **`start.command`** in Finder. It starts LM Studio's server and the app together.
+Or double-click **`start.command`** in Finder.
+
+### You don't need to open LM Studio first
+
+The app handles it, and when you're done it leaves LM Studio the way it found it:
+
+| When you… | The app… |
+|---|---|
+| start it | records whether LM Studio, its server and any models were running, then starts the server (launching LM Studio in the background if needed) |
+| send your first message | loads the selected model fully onto the GPU |
+| close the browser window, close the Terminal window, or press Ctrl+C | unloads models it loaded, stops the server if it was off before, and quits LM Studio if the app is what launched it |
+
+Anything you had running before stays running. The Terminal shows each step, prefixed with `[offline-llm]`.
+
+To turn this off, set `OFFLINE_LLM_MANAGE_LMSTUDIO=0` (leave LM Studio alone) or `OFFLINE_LLM_AUTO_EXIT=0` (don't quit when the window closes). `npm run dev` never auto-quits; it only cleans up on Ctrl+C.
 
 After `npm install` and downloading a model, everything works **with Wi-Fi off**: there are no CDNs, web fonts or telemetry, and all libraries are bundled locally. You don't need to know LM Studio's port, because the app reads it from `lms server status`.
 
@@ -78,6 +92,7 @@ Browser UI (React)  ──/llm/*────▶  Vite server  ──▶  LM Stud
                     ──/local/*──▶  macBridge    ──▶  sysctl / system_profiler / lms CLI
 ```
 
+- [`server/lmsSession.ts`](server/lmsSession.ts): records LM Studio's state at startup and restores it on exit.
 - [`server/macBridge.ts`](server/macBridge.ts): a Vite plugin that serves hardware info, proxies the model API (so there are no CORS issues), and runs `lms` with fixed arguments. Model names are checked against `lms ls`. State-changing calls require a custom header, so other websites can't trigger them.
 - [`src/api.ts`](src/api.ts): streaming client, think-tag parsing and token stats.
 - [`src/App.tsx`](src/App.tsx), [`src/components/`](src/components): the UI.

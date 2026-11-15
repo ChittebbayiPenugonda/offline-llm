@@ -1,13 +1,11 @@
 #!/bin/zsh
 # Double-click in Finder to launch Offline LLM. Works with no internet.
+#
+# The app starts LM Studio's server (and LM Studio itself, if needed) for you.
+# Close the browser window, or this Terminal window, and it puts LM Studio back
+# the way it was: models it loaded are unloaded, and the server/app are stopped
+# if they weren't running before.
 cd "$(dirname "$0")"
-
-LMS="$HOME/.lmstudio/bin/lms"
-if [[ -x "$LMS" ]]; then
-  "$LMS" server start >/dev/null 2>&1 && echo "✓ LM Studio server running"
-else
-  echo "! lms CLI not found — open LM Studio once so it installs it."
-fi
 
 if [[ ! -d node_modules ]]; then
   echo "Installing dependencies (one-time, needs internet)…"

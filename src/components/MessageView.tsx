@@ -98,7 +98,8 @@ export function MessageView({
           {onRegenerate && <button onClick={onRegenerate}>Retry</button>}
           {message.stats && (
             <span className="stats" title="Measured in your browser from the token stream">
-              {message.stats.tokensPerSec.toFixed(1)} tok/s · {message.stats.approx ? '~' : ''}
+              {message.stats.tokens >= 8 ? `${message.stats.tokensPerSec.toFixed(1)} tok/s · ` : ''}
+              {message.stats.approx ? '~' : ''}
               {message.stats.tokens} tokens · {(message.stats.ttftMs / 1000).toFixed(2)}s to first token
             </span>
           )}
