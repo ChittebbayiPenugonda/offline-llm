@@ -2,6 +2,8 @@
 
 A clean, chat-style web UI for running open-source models **entirely on your Mac**, with no internet and no accounts. Nothing leaves your machine.
 
+> **Where this is going:** a local-first assistant that runs open-weight models on your own computer, with web search, a coding agent, and a switch to run models on cloud GPUs instead. See [ROADMAP.md](ROADMAP.md).
+
 It talks to [LM Studio](https://lmstudio.ai) over its local OpenAI-compatible API, and adds a small Mac hardware bridge so the app can see your Apple Silicon chip, memory and GPU, and load models with **full Metal GPU offload**.
 
 ## Features
